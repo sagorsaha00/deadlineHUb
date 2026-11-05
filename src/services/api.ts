@@ -10,7 +10,7 @@ import {
   Attachment,
 } from "../types";
 
-const baseURL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const baseURL = import.meta.env.VITE_API_URL || "https://deadlinebackend-five.vercel.app/api";
 
 export const api = axios.create({
   baseURL,
