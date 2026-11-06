@@ -17,6 +17,8 @@ import {
 import { Task, TaskStatus, Priority } from "../../types";
 import { useAuth } from "../../context/AuthContext";
 import { taskService } from "../../services/api";
+import { SubmitForReviewModal } from "./SubmitForReviewModal";
+import { toast } from "sonner";
 
 interface TaskActionMenuProps {
   task: Task;
@@ -40,6 +42,8 @@ export const TaskActionMenu: React.FC<TaskActionMenuProps> = ({
   const [priorityMenuOpen, setPriorityMenuOpen] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [reminderMessage, setReminderMessage] = useState<string | null>(null);
+  const [submitModalOpen, setSubmitModalOpen] = useState(false);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -105,11 +109,16 @@ export const TaskActionMenu: React.FC<TaskActionMenuProps> = ({
 
   const handleSubmitReview = async () => {
     try {
+      setIsSubmittingReview(true);
       await taskService.submitForReview(task.id);
+      toast.success("Task submitted for Admin review!");
       if (onRefresh) onRefresh();
+      setSubmitModalOpen(false);
       setIsOpen(false);
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to submit for review");
+      toast.error(err.response?.data?.message || "Failed to submit for review");
+    } finally {
+      setIsSubmittingReview(false);
     }
   };
 
@@ -300,8 +309,11 @@ export const TaskActionMenu: React.FC<TaskActionMenuProps> = ({
               {/* Submit for Review if In Progress / To Do */}
               {isAssignedToUser && task.status !== "COMPLETED" && task.status !== "IN_REVIEW" && (
                 <button
-                  onClick={handleSubmitReview}
-                  className="w-full px-3.5 py-1.5 text-left text-indigo-600 hover:bg-indigo-50 flex items-center gap-2.5 transition-colors font-medium"
+                  onClick={() => {
+                    setIsOpen(false);
+                    setSubmitModalOpen(true);
+                  }}
+                  className="w-full px-3.5 py-1.5 text-left text-indigo-600 hover:bg-indigo-50 flex items-center gap-2.5 transition-colors font-medium cursor-pointer"
                 >
                   <CheckCircle className="w-3.5 h-3.5 text-indigo-500" />
                   <span>Submit for Review</span>
@@ -334,6 +346,15 @@ export const TaskActionMenu: React.FC<TaskActionMenuProps> = ({
           )}
         </div>
       )}
+
+      {/* Confirmation Modal */}
+      <SubmitForReviewModal
+        isOpen={submitModalOpen}
+        onClose={() => setSubmitModalOpen(false)}
+        onConfirm={handleSubmitReview}
+        taskTitle={task.title}
+        isLoading={isSubmittingReview}
+      />
     </div>
   );
 };

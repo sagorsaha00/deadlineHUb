@@ -14,6 +14,8 @@ import { LiveCountdown } from "../../components/common/LiveCountdown";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { TaskModal } from "./TaskModal";
 import { ImageLightboxModal } from "../../components/common/ImageLightboxModal";
+import { SubmitForReviewModal } from "../../components/tasks/SubmitForReviewModal";
+import { RequestChangesModal } from "../../components/tasks/RequestChangesModal";
 import {
   ExternalLink,
   ArrowLeft,
@@ -54,6 +56,8 @@ export const TaskDetails: React.FC = () => {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState("");
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [submitModalOpen, setSubmitModalOpen] = useState(false);
+  const [requestChangesModalOpen, setRequestChangesModalOpen] = useState(false);
 
   // Lightbox state
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -101,6 +105,8 @@ export const TaskDetails: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["task", id] });
       queryClient.invalidateQueries({ queryKey: ["activity", id] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setSubmitModalOpen(false);
       toast.success("Task submitted for Admin review!");
     },
     onError: (err: any) => {
@@ -115,6 +121,7 @@ export const TaskDetails: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["task", id] });
       queryClient.invalidateQueries({ queryKey: ["activity", id] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("Task approved and marked COMPLETED!");
     },
     onError: (err: any) => {
@@ -129,6 +136,8 @@ export const TaskDetails: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["task", id] });
       queryClient.invalidateQueries({ queryKey: ["activity", id] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setRequestChangesModalOpen(false);
       toast.success("Changes requested and member notified.");
     },
     onError: (err: any) => {
@@ -399,18 +408,41 @@ export const TaskDetails: React.FC = () => {
                   <option value="COMPLETED">Completed</option>
                 </select>
               ) : (
-                /* Member can only pick TODO, IN_PROGRESS, or IN_REVIEW */
-                <select
-                  value={task.status}
-                  onChange={(e) => statusMutation.mutate(e.target.value as TaskStatus)}
-                  disabled={task.status === "COMPLETED"}
-                  className="w-full px-2.5 py-1.5 text-xs font-medium border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 cursor-pointer disabled:bg-slate-100"
-                >
-                  <option value="TODO">To Do</option>
-                  <option value="IN_PROGRESS">In Progress</option>
-                  <option value="IN_REVIEW">In Review (Submit)</option>
-                  {task.status === "COMPLETED" && <option value="COMPLETED">Completed</option>}
-                </select>
+                /* Member Status Controller */
+                <div className="flex items-center gap-1.5">
+                  {task.status === "TODO" && isAssigned && (
+                    <button
+                      onClick={() => statusMutation.mutate("IN_PROGRESS")}
+                      disabled={statusMutation.isPending}
+                      className="w-full text-center px-2.5 py-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      Start (In Progress)
+                    </button>
+                  )}
+                  {task.status === "IN_PROGRESS" && isAssigned && (
+                    <button
+                      onClick={() => setSubmitModalOpen(true)}
+                      disabled={submitReviewMutation.isPending}
+                      className="w-full text-center px-2.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50"
+                    >
+                      <Send className="w-3 h-3" />
+                      Submit for Review
+                    </button>
+                  )}
+                  {task.status === "IN_REVIEW" && (
+                    <span className="text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg block text-center w-full">
+                      In Review
+                    </span>
+                  )}
+                  {task.status === "COMPLETED" && (
+                    <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-lg block text-center w-full">
+                      Completed
+                    </span>
+                  )}
+                  {!isAssigned && task.status !== "IN_REVIEW" && task.status !== "COMPLETED" && (
+                    <span className="text-xs text-slate-500 italic px-2 py-1">View only</span>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -454,63 +486,121 @@ export const TaskDetails: React.FC = () => {
           </div>
         </div>
 
-        {/* WORKFLOW ACTION BAR: Prominent Review Controls */}
-        <div className="py-3 px-4 bg-slate-50/70 border border-slate-200/80 rounded-lg my-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-800">Workflow Action:</span>
-            {task.status === "IN_REVIEW" ? (
-              <span className="text-indigo-700 font-medium">
-                Task is currently submitted and waiting for Admin review.
-              </span>
-            ) : task.status === "COMPLETED" ? (
-              <span className="text-emerald-700 font-medium">
-                Task is completed and verified.
-              </span>
-            ) : (
-              <span className="text-slate-600">
-                {isAssigned
-                  ? "When you finish your work, submit it here for Admin sign-off."
-                  : "Task is active and in development."}
-              </span>
-            )}
+        {/* WORKFLOW ACTION BANNER: Modern, Intuitive & Role-Aware */}
+        {/* State 1: Assignee working on IN_PROGRESS task */}
+        {!isAdmin && isAssigned && task.status === "IN_PROGRESS" && (
+          <div className="bg-gradient-to-r from-indigo-50/90 via-blue-50/60 to-slate-50 border border-indigo-200/80 rounded-xl p-4 sm:p-5 my-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Send className="w-5 h-5 ml-0.5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-700 border border-blue-200/60">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
+                    In Progress
+                  </span>
+                  <span className="text-xs font-bold text-slate-800">Ready for review?</span>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Finished working? Send this task to Admin for review.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSubmitModalOpen(true)}
+              disabled={submitReviewMutation.isPending}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-xl shadow-xs transition-all cursor-pointer shrink-0 disabled:opacity-50"
+            >
+              <Send className="w-4 h-4" />
+              <span>Submit for Review</span>
+            </button>
           </div>
+        )}
 
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Member Action: Submit for Review */}
-            {!isAdmin && isAssigned && task.status !== "COMPLETED" && task.status !== "IN_REVIEW" && (
-              <button
-                onClick={() => submitReviewMutation.mutate()}
-                disabled={submitReviewMutation.isPending}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-              >
-                <CheckCircle className="w-3.5 h-3.5" />
-                Submit for Review
-              </button>
-            )}
+        {/* State 2: Assignee on TODO task */}
+        {!isAdmin && isAssigned && task.status === "TODO" && (
+          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 my-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-900">Task is waiting to be started</p>
+                <p className="text-slate-500">Move this task to In Progress when you begin working.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => statusMutation.mutate("IN_PROGRESS")}
+              disabled={statusMutation.isPending}
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Start Task (In Progress)</span>
+            </button>
+          </div>
+        )}
 
-            {/* Admin Review Controls */}
-            {isAdmin && task.status === "IN_REVIEW" && (
-              <>
+        {/* State 3: Task in IN_REVIEW (Member view or Admin review controls) */}
+        {task.status === "IN_REVIEW" && (
+          <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-xl p-4 my-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                <CheckCircle className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="font-semibold text-indigo-950">Submitted for Admin Review</span>
+                  <span className="bg-indigo-100 text-indigo-800 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                    Awaiting Approval
+                  </span>
+                </div>
+                <p className="text-indigo-800/80 text-[11px] leading-relaxed">
+                  {isAdmin
+                    ? "Assignee has submitted their work. Verify the deliverables and approve or request changes."
+                    : "Your work is currently in the review queue. The administrator will inspect it and sign off or request changes."}
+                </p>
+              </div>
+            </div>
+
+            {isAdmin && (
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                 <button
-                  onClick={handleRequestChangesPrompt}
+                  onClick={() => setRequestChangesModalOpen(true)}
                   disabled={requestChangesMutation.isPending}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  Request Changes
+                  <span>Request Changes</span>
                 </button>
                 <button
                   onClick={() => completeTaskMutation.mutate()}
                   disabled={completeTaskMutation.isPending}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  Approve & Complete
+                  <span>Approve & Complete</span>
                 </button>
-              </>
+              </div>
             )}
           </div>
-        </div>
+        )}
+
+        {/* State 4: Task is COMPLETED */}
+        {task.status === "COMPLETED" && (
+          <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-4 my-4 flex items-center gap-3 text-xs">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <Check className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-semibold text-emerald-900">Task Completed & Approved</p>
+              <p className="text-emerald-700/80 text-[11px]">
+                This task has been verified and successfully closed by the administrator.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Description Section */}
         <div className="pt-2">
@@ -798,6 +888,26 @@ export const TaskDetails: React.FC = () => {
         fileName={lightboxFileName}
         onClose={() => setLightboxImage(null)}
       />
+
+      {/* Submit for Review Confirmation Modal */}
+      <SubmitForReviewModal
+        isOpen={submitModalOpen}
+        onClose={() => setSubmitModalOpen(false)}
+        onConfirm={() => submitReviewMutation.mutate()}
+        taskTitle={task.title}
+        isLoading={submitReviewMutation.isPending}
+      />
+
+      {/* Admin Request Changes Modal */}
+      {isAdmin && (
+        <RequestChangesModal
+          isOpen={requestChangesModalOpen}
+          onClose={() => setRequestChangesModalOpen(false)}
+          onConfirm={(reason) => requestChangesMutation.mutate(reason)}
+          taskTitle={task.title}
+          isLoading={requestChangesMutation.isPending}
+        />
+      )}
     </div>
   );
 };
