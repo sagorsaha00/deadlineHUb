@@ -17,6 +17,12 @@ import {
   ClipboardCheck,
   Check,
   RotateCcw,
+  Users,
+  TrendingUp,
+  Calendar,
+  AlertTriangle,
+  PlayCircle,
+  ListTodo,
 } from "lucide-react";
 import { TaskCard } from "../../components/tasks/TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
@@ -32,44 +38,60 @@ export const Dashboard: React.FC = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Queries for real backend data
-  const { data: allTasksData, isLoading: tasksLoading } = useQuery({
-    queryKey: ["tasks", "dashboard"],
-    queryFn: () => taskService.getTasks({ limit: 50 }),
+  // 1. Dedicated PostgreSQL Aggregate Statistics Query
+  const { data: statsData, isLoading: statsLoading } = useQuery({
+    queryKey: ["tasks", "dashboard-stats"],
+    queryFn: () => taskService.getDashboardStats(),
   });
 
+  // 2. Tasks list query for task cards
+  const { data: allTasksData, isLoading: tasksLoading } = useQuery({
+    queryKey: ["tasks", "dashboard"],
+    queryFn: () => taskService.getTasks({ limit: 10 }),
+  });
+
+  // 3. Upcoming deadlines
   const { data: upcomingData } = useQuery({
     queryKey: ["tasks", "upcoming"],
     queryFn: () => taskService.getUpcomingDeadlines(),
   });
 
+  // 4. Tasks assigned to current user
   const { data: assignedData } = useQuery({
     queryKey: ["tasks", "assigned-to-me"],
     queryFn: () => taskService.getAssignedToMe(),
   });
 
+  // 5. Activity history
   const { data: activityData } = useQuery({
     queryKey: ["activity", "recent"],
     queryFn: () => activityService.getRecentActivity(),
   });
+
+  const stats = statsData?.data;
+  const totalTasks = stats?.totalTasks ?? 0;
+  const todoCount = stats?.todoCount ?? 0;
+  const inProgressCount = stats?.inProgressCount ?? 0;
+  const inReviewCount = stats?.inReviewCount ?? 0;
+  const completedCount = stats?.completedCount ?? 0;
+  const overdueCount = stats?.overdueCount ?? 0;
+  const remainingCount = stats?.remainingCount ?? 0;
+  const completionProgress = stats?.completionProgress ?? 0;
+  const deadlines = stats?.deadlines ?? {
+    dueToday: 0,
+    dueTomorrow: 0,
+    dueIn7Days: 0,
+    overdue: 0,
+    completed: 0,
+  };
+  const teamProgress = stats?.teamProgress ?? [];
 
   const tasks = allTasksData?.data?.tasks || [];
   const upcomingTasks = upcomingData?.data || [];
   const assignedTasks = assignedData?.data || [];
   const activities = activityData?.data || [];
 
-  // Summary Metrics
-  const totalTasks = allTasksData?.data?.pagination?.totalCount ?? tasks.length;
   const inReviewTasks = tasks.filter((t) => t.status === "IN_REVIEW");
-  const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length;
-  const overdueTasks = tasks.filter((t) => t.isOverdue).length;
-  const activeTasks = Math.max(0, totalTasks - completedTasks);
-
-  // Member metrics
-  const myAssignedCount = assignedTasks.length;
-  const myInReviewCount = assignedTasks.filter((t) => t.status === "IN_REVIEW").length;
-  const myOverdueCount = assignedTasks.filter((t) => t.isOverdue).length;
-  const myCompletedCount = assignedTasks.filter((t) => t.status === "COMPLETED").length;
 
   const handleAdminApprove = async (taskId: string) => {
     try {
@@ -112,8 +134,8 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  if (tasksLoading) {
-    return <LoadingSpinner size="lg" label="Loading dashboard..." className="h-96" />;
+  if (tasksLoading && statsLoading) {
+    return <LoadingSpinner size="lg" label="Loading dashboard metrics..." className="h-96" />;
   }
 
   return (
@@ -126,7 +148,7 @@ export const Dashboard: React.FC = () => {
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
             {isAdmin
-              ? "Administrator command center: review submissions, monitor deadlines & workload"
+              ? "Administrator command center: real-time database statistics, review queue & workload"
               : "Your personal assignment board: track deadlines and submit deliverables"}
           </p>
         </div>
@@ -142,106 +164,212 @@ export const Dashboard: React.FC = () => {
         )}
       </div>
 
-      {/* Summary Stat Cards */}
-      {isAdmin ? (
-        /* ADMIN STAT CARDS */
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-medium text-slate-600">Total Tasks</span>
-              <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-                <CheckSquare className="w-3.5 h-3.5" />
-              </div>
+      {/* Primary Status Metric Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        {/* Total Tasks / Assigned */}
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              {isAdmin ? "Total Tasks" : "Assigned"}
+            </span>
+            <div className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-slate-700">
+              <CheckSquare className="w-3.5 h-3.5" />
             </div>
-            <div className="text-2xl font-bold text-slate-900 tracking-tight">{totalTasks}</div>
-            <p className="text-[11px] text-slate-400 mt-1">Across all team members</p>
+          </div>
+          <div className="text-2xl font-bold text-slate-900 tracking-tight">{totalTasks}</div>
+          <p className="text-[10px] text-slate-400 mt-1">
+            {isAdmin ? "Database total" : "Your active pool"}
+          </p>
+        </div>
+
+        {/* TODO */}
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">To Do</span>
+            <div className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-slate-600">
+              <ListTodo className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-slate-700 tracking-tight">{todoCount}</div>
+          <p className="text-[10px] text-slate-400 mt-1">Not yet started</p>
+        </div>
+
+        {/* In Progress */}
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-600">In Progress</span>
+            <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center text-blue-600">
+              <PlayCircle className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-blue-600 tracking-tight">{inProgressCount}</div>
+          <p className="text-[10px] text-slate-400 mt-1">Under active work</p>
+        </div>
+
+        {/* In Review */}
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600">In Review</span>
+            <div className="w-6 h-6 rounded-md bg-indigo-50 flex items-center justify-center text-indigo-600">
+              <ClipboardCheck className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-indigo-600 tracking-tight">{inReviewCount}</div>
+          <p className="text-[10px] text-slate-400 mt-1">Awaiting sign-off</p>
+        </div>
+
+        {/* Completed */}
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600">Completed</span>
+            <div className="w-6 h-6 rounded-md bg-emerald-50 flex items-center justify-center text-emerald-600">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-emerald-600 tracking-tight">{completedCount}</div>
+          <p className="text-[10px] text-slate-400 mt-1">Delivered successfully</p>
+        </div>
+
+        {/* Overdue */}
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-600">Overdue</span>
+            <div className="w-6 h-6 rounded-md bg-rose-50 flex items-center justify-center text-rose-600">
+              <AlertCircle className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-rose-600 tracking-tight">{overdueCount}</div>
+          <p className="text-[10px] text-slate-400 mt-1">Passed deadline</p>
+        </div>
+      </div>
+
+      {/* Completion Progress & Deadlines Overview Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Overall Completion Progress */}
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-slate-700" />
+                <h2 className="text-sm font-semibold text-slate-900">
+                  {isAdmin ? "Overall Project Completion Progress" : "Personal Task Progress"}
+                </h2>
+              </div>
+              <span className="text-sm font-bold text-slate-900">{completionProgress}%</span>
+            </div>
+            <p className="text-xs text-slate-500 mb-3">
+              Calculated dynamically from real database records (Completed ÷ Total × 100)
+            </p>
+
+            {/* Progress Bar */}
+            <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden flex">
+              <div
+                className="bg-emerald-500 h-3 transition-all duration-500 rounded-l-full"
+                style={{ width: `${completionProgress}%` }}
+                title={`Completed: ${completionProgress}%`}
+              />
+              <div
+                className="bg-blue-400 h-3 transition-all duration-500"
+                style={{
+                  width: `${totalTasks > 0 ? (inProgressCount / totalTasks) * 100 : 0}%`,
+                }}
+                title={`In Progress: ${inProgressCount}`}
+              />
+              <div
+                className="bg-indigo-400 h-3 transition-all duration-500"
+                style={{
+                  width: `${totalTasks > 0 ? (inReviewCount / totalTasks) * 100 : 0}%`,
+                }}
+                title={`In Review: ${inReviewCount}`}
+              />
+            </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-medium text-slate-600">Awaiting Review</span>
-              <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
-                <ClipboardCheck className="w-3.5 h-3.5" />
-              </div>
+          {/* Detailed Metric Badges */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4 pt-4 border-t border-slate-100 text-center">
+            <div className="p-2 rounded-lg bg-slate-50">
+              <div className="text-[10px] uppercase font-semibold text-slate-500">Completed</div>
+              <div className="text-base font-bold text-emerald-600">{completedCount}</div>
             </div>
-            <div className="text-2xl font-bold text-indigo-600 tracking-tight">
-              {inReviewTasks.length}
+            <div className="p-2 rounded-lg bg-slate-50">
+              <div className="text-[10px] uppercase font-semibold text-slate-500">Remaining</div>
+              <div className="text-base font-bold text-slate-800">{remainingCount}</div>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Submissions pending approval</p>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-medium text-slate-600">Completed</span>
-              <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-              </div>
+            <div className="p-2 rounded-lg bg-slate-50">
+              <div className="text-[10px] uppercase font-semibold text-slate-500">In Progress</div>
+              <div className="text-base font-bold text-blue-600">{inProgressCount}</div>
             </div>
-            <div className="text-2xl font-bold text-slate-900 tracking-tight">{completedTasks}</div>
-            <p className="text-[11px] text-slate-400 mt-1">Delivered deliverables</p>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-medium text-slate-600">Overdue</span>
-              <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center text-rose-600">
-                <AlertCircle className="w-3.5 h-3.5" />
-              </div>
+            <div className="p-2 rounded-lg bg-slate-50">
+              <div className="text-[10px] uppercase font-semibold text-slate-500">In Review</div>
+              <div className="text-base font-bold text-indigo-600">{inReviewCount}</div>
             </div>
-            <div className="text-2xl font-bold text-rose-600 tracking-tight">{overdueTasks}</div>
-            <p className="text-[11px] text-slate-400 mt-1">Need immediate follow-up</p>
+            <div className="p-2 rounded-lg bg-slate-50 col-span-2 sm:col-span-1">
+              <div className="text-[10px] uppercase font-semibold text-slate-500">Overdue</div>
+              <div className="text-base font-bold text-rose-600">{overdueCount}</div>
+            </div>
           </div>
         </div>
-      ) : (
-        /* MEMBER STAT CARDS */
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-medium text-slate-600">Assigned to Me</span>
-              <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-                <Clock className="w-3.5 h-3.5" />
+
+        {/* Deadlines Overview Card */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-slate-700" />
+                <h2 className="text-sm font-semibold text-slate-900">Deadline Schedule</h2>
               </div>
+              <Link to="/deadlines" className="text-[11px] font-semibold text-blue-600 hover:underline">
+                View all &rarr;
+              </Link>
             </div>
-            <div className="text-2xl font-bold text-slate-900 tracking-tight">{myAssignedCount}</div>
-            <p className="text-[11px] text-slate-400 mt-1">Your total tasks</p>
+            <p className="text-xs text-slate-500 mb-3">Timeframe breakdown based on due dates</p>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-medium text-slate-600">Under Review</span>
-              <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
-                <ClipboardCheck className="w-3.5 h-3.5" />
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between p-2.5 rounded-lg border border-amber-100 bg-amber-50/50">
+              <div className="flex items-center gap-2 text-xs font-medium text-amber-900">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                <span>Due Today</span>
               </div>
+              <span className="text-xs font-bold text-amber-700 px-2 py-0.5 rounded-md bg-white border border-amber-200">
+                {deadlines.dueToday}
+              </span>
             </div>
-            <div className="text-2xl font-bold text-indigo-600 tracking-tight">{myInReviewCount}</div>
-            <p className="text-[11px] text-slate-400 mt-1">Waiting for Admin sign-off</p>
-          </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-medium text-slate-600">Completed</span>
-              <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
-                <CheckCircle2 className="w-3.5 h-3.5" />
+            <div className="flex items-center justify-between p-2.5 rounded-lg border border-blue-100 bg-blue-50/50">
+              <div className="flex items-center gap-2 text-xs font-medium text-blue-900">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                <span>Due Tomorrow</span>
               </div>
+              <span className="text-xs font-bold text-blue-700 px-2 py-0.5 rounded-md bg-white border border-blue-200">
+                {deadlines.dueTomorrow}
+              </span>
             </div>
-            <div className="text-2xl font-bold text-slate-900 tracking-tight">{myCompletedCount}</div>
-            <p className="text-[11px] text-slate-400 mt-1">Approved & closed</p>
-          </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-medium text-slate-600">Overdue</span>
-              <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center text-rose-600">
-                <AlertCircle className="w-3.5 h-3.5" />
+            <div className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 bg-slate-50/70">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-800">
+                <Clock className="w-3.5 h-3.5 text-slate-500" />
+                <span>Due within 7 Days</span>
               </div>
+              <span className="text-xs font-bold text-slate-700 px-2 py-0.5 rounded-md bg-white border border-slate-200">
+                {deadlines.dueIn7Days}
+              </span>
             </div>
-            <div className="text-2xl font-bold text-rose-600 tracking-tight">{myOverdueCount}</div>
-            <p className="text-[11px] text-slate-400 mt-1">Past deadline date</p>
+
+            <div className="flex items-center justify-between p-2.5 rounded-lg border border-rose-100 bg-rose-50/50">
+              <div className="flex items-center gap-2 text-xs font-medium text-rose-900">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                <span>Overdue (Unresolved)</span>
+              </div>
+              <span className="text-xs font-bold text-rose-700 px-2 py-0.5 rounded-md bg-white border border-rose-200">
+                {deadlines.overdue}
+              </span>
+            </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* ADMIN REVIEW QUEUE WIDGET */}
+      {/* Admin Review Queue Widget */}
       {isAdmin && inReviewTasks.length > 0 && (
         <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-xl p-5 shadow-xs">
           <div className="flex items-center justify-between mb-3">
@@ -306,6 +434,83 @@ export const Dashboard: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Admin: Team Progress Breakdown Table */}
+      {isAdmin && teamProgress.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-slate-700" />
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Team Workload & Progress</h2>
+                <p className="text-[11px] text-slate-500">Individual member assignment status from database</p>
+              </div>
+            </div>
+            <Link to="/team" className="text-xs font-semibold text-slate-900 hover:text-blue-600">
+              Manage Team &rarr;
+            </Link>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-400 font-medium">
+                  <th className="pb-2.5 font-medium">Member</th>
+                  <th className="pb-2.5 font-medium text-center">Assigned</th>
+                  <th className="pb-2.5 font-medium text-center">In Progress</th>
+                  <th className="pb-2.5 font-medium text-center">In Review</th>
+                  <th className="pb-2.5 font-medium text-center">Completed</th>
+                  <th className="pb-2.5 font-medium text-center">Overdue</th>
+                  <th className="pb-2.5 font-medium text-right">Completion</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {teamProgress.map((member) => (
+                  <tr key={member.id} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px]">
+                          {getInitials(member.name)}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-900">{member.name}</div>
+                          <div className="text-[10px] text-slate-400">{member.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 text-center font-semibold text-slate-700">{member.totalAssigned}</td>
+                    <td className="py-3 text-center font-medium text-blue-600">{member.inProgress}</td>
+                    <td className="py-3 text-center font-medium text-indigo-600">{member.inReview}</td>
+                    <td className="py-3 text-center font-medium text-emerald-600">{member.completed}</td>
+                    <td className="py-3 text-center font-medium text-rose-600">
+                      {member.overdue > 0 ? (
+                        <span className="px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-700 font-bold">
+                          {member.overdue}
+                        </span>
+                      ) : (
+                        "0"
+                      )}
+                    </td>
+                    <td className="py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="bg-emerald-500 h-1.5 rounded-full"
+                            style={{ width: `${member.completionPercentage}%` }}
+                          />
+                        </div>
+                        <span className="font-semibold text-[11px] text-slate-800 w-8 text-right">
+                          {member.completionPercentage}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -397,21 +602,33 @@ export const Dashboard: React.FC = () => {
               </Link>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(isAdmin ? tasks : assignedTasks).slice(0, 4).map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onRefresh={() => queryClient.invalidateQueries({ queryKey: ["tasks"] })}
+            {(isAdmin ? tasks : assignedTasks).length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                <EmptyState
+                  title={isAdmin ? "No tasks created yet" : "No tasks assigned to you"}
+                  description={
+                    isAdmin
+                      ? "Create your first task to start assigning work and monitoring deadlines."
+                      : "When an administrator assigns tasks to your account, they will appear here."
+                  }
                 />
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(isAdmin ? tasks : assignedTasks).slice(0, 4).map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    onRefresh={() => queryClient.invalidateQueries({ queryKey: ["tasks"] })}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Right Column (1 col): Tasks Assigned to Me (or Team Members) & Recent Activity */}
+        {/* Right Column (1 col): Member Actions & Activity History */}
         <div className="space-y-6">
-          {/* Member: My Tasks Action List / Admin: Quick Link */}
           {!isAdmin ? (
             <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
               <div className="flex items-center justify-between mb-3">
@@ -466,17 +683,20 @@ export const Dashboard: React.FC = () => {
           ) : (
             <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-slate-900">Team Directory</h2>
-                <Link
-                  to="/team"
-                  className="text-xs font-semibold text-slate-900 hover:text-blue-600"
-                >
-                  Manage Team &rarr;
-                </Link>
+                <h2 className="text-sm font-semibold text-slate-900">Active Team Overview</h2>
+                <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">
+                  {teamProgress.length} Members
+                </span>
               </div>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Track workload distribution, assign tasks, and verify deadlines across all team members.
+              <p className="text-xs text-slate-500 leading-relaxed mb-3">
+                Track workload distribution, assign tasks, and verify deadlines across all team members in real-time.
               </p>
+              <Link
+                to="/team"
+                className="text-xs font-semibold text-blue-600 hover:underline inline-flex items-center gap-1"
+              >
+                Inspect full team roster &rarr;
+              </Link>
             </div>
           )}
 

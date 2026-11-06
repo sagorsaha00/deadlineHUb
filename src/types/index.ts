@@ -158,3 +158,37 @@ export interface PaginatedTasks {
     totalPages: number;
   };
 }
+
+export interface TeamMemberProgress {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl?: string | null;
+  totalAssigned: number;
+  todo: number;
+  inProgress: number;
+  inReview: number;
+  completed: number;
+  overdue: number;
+  completionPercentage: number;
+}
+
+export interface DashboardStats {
+  totalTasks: number;
+  todoCount: number;
+  inProgressCount: number;
+  inReviewCount: number;
+  completedCount: number;
+  overdueCount: number;
+  remainingCount: number;
+  completionProgress: number;
+  deadlines: {
+    dueToday: number;
+    dueTomorrow: number;
+    dueIn7Days: number;
+    overdue: number;
+    completed: number;
+  };
+  teamProgress?: TeamMemberProgress[];
+}
+

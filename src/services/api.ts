@@ -8,6 +8,7 @@ import {
   Notification,
   ActivityLog,
   Attachment,
+  DashboardStats,
 } from "../types";
 
 const baseURL = import.meta.env.VITE_API_URL || "https://deadlinebackend-five.vercel.app/api";
@@ -95,6 +96,10 @@ export const userService = {
 
 // Tasks Services
 export const taskService = {
+  getDashboardStats: async () => {
+    const res = await api.get<ApiResponse<DashboardStats>>("/tasks/dashboard-stats");
+    return res.data;
+  },
   getTasks: async (params?: Record<string, any>) => {
     const res = await api.get<ApiResponse<PaginatedTasks>>("/tasks", { params });
     return res.data;

@@ -11,6 +11,8 @@ import {
   Clock,
   ArrowRightCircle,
   Flag,
+  UserCheck,
+  Calendar,
 } from "lucide-react";
 import { Task, TaskStatus, Priority } from "../../types";
 import { useAuth } from "../../context/AuthContext";
@@ -155,16 +157,40 @@ export const TaskActionMenu: React.FC<TaskActionMenuProps> = ({
             <>
               <div className="py-1">
                 {onEdit && (
-                  <button
-                    onClick={() => {
-                      onEdit(task);
-                      setIsOpen(false);
-                    }}
-                    className="w-full px-3.5 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
-                  >
-                    <Edit2 className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Edit Task</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={() => {
+                        onEdit(task);
+                        setIsOpen(false);
+                      }}
+                      className="w-full px-3.5 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
+                    >
+                      <Edit2 className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Edit Task</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        onEdit(task);
+                        setIsOpen(false);
+                      }}
+                      className="w-full px-3.5 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
+                    >
+                      <UserCheck className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Change Assignee</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        onEdit(task);
+                        setIsOpen(false);
+                      }}
+                      className="w-full px-3.5 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Change Deadline</span>
+                    </button>
+                  </>
                 )}
 
                 {/* Change Status Submenu */}
@@ -255,8 +281,10 @@ export const TaskActionMenu: React.FC<TaskActionMenuProps> = ({
                 <div className="py-1">
                   <button
                     onClick={() => {
-                      onDelete(task.id);
-                      setIsOpen(false);
+                      if (window.confirm(`Are you sure you want to delete task "${task.title}"? This cannot be undone.`)) {
+                        onDelete(task.id);
+                        setIsOpen(false);
+                      }
                     }}
                     className="w-full px-3.5 py-1.5 text-left text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors font-medium"
                   >
